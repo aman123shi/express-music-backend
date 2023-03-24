@@ -49,27 +49,31 @@ router.get("/overall", async (req, res) => {
         },
       },
       {
-        $set: {
-          totalNumberOfSongs: {
-            $first: "$totalNumberOfSongs",
-          },
-          totalNumberOfArtists: {
-            $first: "$totalNumberOfArtists",
-          },
-          totalNumberOfAlbums: {
-            $first: "$totalNumberOfAlbums",
-          },
-          totalNumberOfGenres: {
-            $first: "$totalNumberOfGenres",
-          },
-        },
-      },
-      {
         $project: {
-          totalSongs: "$totalNumberOfSongs.counter",
-          totalAlbums: "$totalNumberOfAlbums.counter",
-          totalGenres: "$totalNumberOfGenres.counter",
-          totalArtists: "$totalNumberOfArtists.counter",
+          totalSongs: {
+            $getField: {
+              field: "counter",
+              input: { $first: "$totalNumberOfSongs" },
+            },
+          },
+          totalArtists: {
+            $getField: {
+              field: "counter",
+              input: { $first: "$totalNumberOfArtists" },
+            },
+          },
+          totalAlbums: {
+            $getField: {
+              field: "counter",
+              input: { $first: "$totalNumberOfAlbums" },
+            },
+          },
+          totalGenres: {
+            $getField: {
+              field: "counter",
+              input: { $first: "$totalNumberOfGenres" },
+            },
+          },
         },
       },
     ],
@@ -85,14 +89,15 @@ router.get("/genre-songs", async (_req, res) => {
   //group by genre and count songs
   const genreNumberOfSongs = await Song.aggregate([
     { $group: { _id: "$genre", totalSongs: { $sum: 1 } } },
+    {
+      $set: {
+        genre: "$_id",
+        _id: "$$REMOVE",
+      },
+    },
   ]);
 
-  const formattedResponse = genreNumberOfSongs.map((stat) => ({
-    genre: stat._id,
-    totalSongs: stat.totalSongs,
-  }));
-
-  return res.send(formattedResponse);
+  return res.send(genreNumberOfSongs);
 });
 
 /**
@@ -100,32 +105,76 @@ router.get("/genre-songs", async (_req, res) => {
  * return type : [ {artist:string,totalSongs:number,totalAlbums:number} ]
  */
 router.get("/artist-songs-albums", async (_req, res) => {
-  //group by artist and count songs
-  const artistNumberOfSongs = await Song.aggregate([
-    { $group: { _id: "$artist", totalSongs: { $sum: 1 } } },
-  ]);
-
-  //group to count Total Albums
-  const artistNumberOfAlbums = await Song.aggregate([
-    {
-      $group: {
-        _id: { artist: "$artist", album: "$album" },
+  const formattedResponse = await Song.aggregate([
+    [
+      {
+        $facet: {
+          artist: [
+            {
+              $group: {
+                _id: "$artist",
+                totalSongs: {
+                  $sum: 1,
+                },
+              },
+            },
+            {
+              $set: {
+                artist: "$_id",
+                _id: "$$REMOVE",
+              },
+            },
+          ],
+          albums: [
+            {
+              $group: {
+                _id: {
+                  artist: "$artist",
+                  album: "$album",
+                },
+              },
+            },
+            {
+              $group: {
+                _id: "$_id.artist",
+                totalAlbums: {
+                  $sum: 1,
+                },
+              },
+            },
+          ],
+        },
       },
-    },
-    {
-      $group: { _id: "$_id.artist", totalAlbums: { $sum: 1 } },
-    },
+      {
+        $unwind: {
+          path: "$artist",
+          preserveNullAndEmptyArrays: false,
+        },
+      },
+      {
+        $project: {
+          artist: "$artist.artist",
+          totalSongs: "$artist.totalSongs",
+          totalAlbums: {
+            $getField: {
+              field: "totalAlbums",
+              input: {
+                $first: {
+                  $filter: {
+                    input: "$albums",
+                    as: "album",
+                    cond: {
+                      $eq: ["$artist.artist", "$$album._id"],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ],
   ]);
-  const formattedResponse = [];
-
-  for (const albumStat of artistNumberOfAlbums) {
-    const artist = albumStat._id;
-    const totalSongs = artistNumberOfSongs.find(
-      (artistSongsStat) => artist == artistSongsStat._id
-    ).totalSongs;
-    const totalAlbums = albumStat.totalAlbums;
-    formattedResponse.push({ artist, totalSongs, totalAlbums });
-  }
 
   return res.send(formattedResponse);
 });
@@ -138,14 +187,10 @@ router.get("/album-songs", async (_req, res) => {
   //group by album and count songs
   const genreNumberOfSongs = await Song.aggregate([
     { $group: { _id: "$album", totalSongs: { $sum: 1 } } },
+    { $set: { album: "$_id", _id: "$$REMOVE" } },
   ]);
 
-  const formattedResponse = genreNumberOfSongs.map((stat) => ({
-    album: stat._id,
-    totalSongs: stat.totalSongs,
-  }));
-
-  return res.send(formattedResponse);
+  return res.send(genreNumberOfSongs);
 });
 
 module.exports = router;
