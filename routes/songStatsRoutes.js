@@ -7,11 +7,74 @@ const Song = require("../models/song");
  * return type : { totalSongs:number, totalArtists:number, totalAlbums:number, totalGenres:number }
  */
 router.get("/overall", async (req, res) => {
-  const totalSongs = await Song.find().count();
-  const totalArtists = (await Song.find().distinct("artist")).length || 0;
-  const totalAlbums = (await Song.find().distinct("album")).length || 0;
-  const totalGenres = (await Song.find().distinct("genre")).length || 0;
-  return res.send({ totalSongs, totalArtists, totalAlbums, totalGenres });
+  const response = await Song.aggregate([
+    [
+      {
+        $facet: {
+          totalNumberOfSongs: [
+            {
+              $count: "counter",
+            },
+          ],
+          totalNumberOfArtists: [
+            {
+              $group: {
+                _id: "$artist",
+              },
+            },
+            {
+              $count: "counter",
+            },
+          ],
+          totalNumberOfAlbums: [
+            {
+              $group: {
+                _id: "$album",
+              },
+            },
+            {
+              $count: "counter",
+            },
+          ],
+          totalNumberOfGenres: [
+            {
+              $group: {
+                _id: "$genre",
+              },
+            },
+            {
+              $count: "counter",
+            },
+          ],
+        },
+      },
+      {
+        $set: {
+          totalNumberOfSongs: {
+            $first: "$totalNumberOfSongs",
+          },
+          totalNumberOfArtists: {
+            $first: "$totalNumberOfArtists",
+          },
+          totalNumberOfAlbums: {
+            $first: "$totalNumberOfAlbums",
+          },
+          totalNumberOfGenres: {
+            $first: "$totalNumberOfGenres",
+          },
+        },
+      },
+      {
+        $project: {
+          totalSongs: "$totalNumberOfSongs.counter",
+          totalAlbums: "$totalNumberOfAlbums.counter",
+          totalGenres: "$totalNumberOfGenres.counter",
+          totalArtists: "$totalNumberOfArtists.counter",
+        },
+      },
+    ],
+  ]);
+  return res.send(response);
 });
 
 /**
