@@ -78,7 +78,7 @@ router.get("/overall", async (req, res) => {
       },
     ],
   ]);
-  return res.send(response);
+  return res.send(response[0]);
 });
 
 /**
